@@ -133,209 +133,186 @@ const KaleidoscopeMaker: React.FC = () => {
   };
   
   useEffect(() => {
-    // Ensure this code runs only in the browser environment
-    if (typeof window !== 'undefined') {
-      const scene = new THREE.Scene();
-      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
-      camera.position.z = 1;
-      
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      containerRef.current?.appendChild(renderer.domElement);
-      
-      const fragmentShader = `
-        precision highp float;
-        
-        uniform float u_time;
-        uniform vec2 u_resolution;
-        uniform float u_speedFactor;
-        uniform int u_iterations;
-        uniform float u_symmetry;
-        uniform float u_complexity;
-        uniform float u_rotationSpeed;
-        uniform vec3 u_color1;
-        uniform vec3 u_color2;
-        uniform float u_edgeIntensity;
-        uniform float u_glowIntensity;
-        uniform float u_harmonicScale;
-        uniform float u_spiralFactor;
-        uniform float u_patternMix;
-        
-        #define PI 3.14159265359
-        
-        vec3 hsv2rgb(vec3 c) {
-            vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-            vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-            return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-        }
-        
-        vec2 cmul(vec2 a, vec2 b) {
-            return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
-        }
-        
-        vec2 cexp(vec2 z) {
-            return vec2(exp(z.x) * cos(z.y), exp(z.x) * sin(z.y));
-        }
-        
-        float harmonicPattern(vec2 p, float scale, float t) {
-            return 0.5 + 0.5 * sin(length(p) * scale - t);
-        }
-        
-        float spiralPattern(vec2 p, float spiralFactor, float t) {
-            float angle = atan(p.y, p.x);
-            float r = length(p);
-            return 0.5 + 0.5 * sin(r * 10.0 - angle * spiralFactor + t);
-        }
-        
-        vec2 rotate(vec2 p, float a) {
-            float c = cos(a);
-            float s = sin(a);
-            return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
-        }
-        
-        vec2 iteratedFunction(vec2 p, float t, int iterations, float symmetry, float rotSpeed) {
-            for(int i = 0; i < 10; i++) {
-                if (i >= iterations) break;
-                
-                p = abs(p) / dot(p, p) - 0.5;
-                
-                float rotAngle = t * rotSpeed + float(i) * 0.1 + (2.0 * PI / symmetry);
-                p = rotate(p, rotAngle);
-                
-                p = cmul(p, cexp(vec2(0.0, t * 0.1)));
-            }
-            return p;
-        }
-        
-        vec2 kaleidoscope(vec2 p, float segments) {
-            float angle = atan(p.y, p.x);
-            float segmentAngle = 2.0 * PI / segments;
-            float baseAngle = floor(angle / segmentAngle) * segmentAngle;
-            float relativeAngle = angle - baseAngle;
-            
-            if (mod(floor(angle / segmentAngle), 2.0) >= 1.0) {
-                relativeAngle = segmentAngle - relativeAngle;
-            }
-            
-            float len = length(p);
-            return vec2(len * cos(relativeAngle + baseAngle), len * sin(relativeAngle + baseAngle));
-        }
-        
-        void main() {
-            vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
-            
-            float t = u_time * u_speedFactor;
-            
-            vec2 kUv = kaleidoscope(uv, u_symmetry);
-            
-            vec2 p = rotate(kUv, t * u_rotationSpeed);
-            
-            vec2 q = iteratedFunction(p, t, u_iterations, u_symmetry, u_rotationSpeed);
-            
-            float pattern1 = harmonicPattern(q, u_harmonicScale, t * 2.0);
-            float pattern2 = spiralPattern(q, u_spiralFactor, t);
-            
-            float finalPattern = mix(pattern1, pattern2, u_patternMix + 0.5 * sin(t * 0.2));
-            
-            float edgePattern = 0.5 + 0.5 * sin(finalPattern * u_complexity);
-            edgePattern = pow(edgePattern, 10.0);
-            
-            vec3 color = mix(
-                u_color1,
-                u_color2,
-                clamp(finalPattern * 2.0 - 0.5, 0.0, 1.0)
-            );
-            
-            color += vec3(1.0) * edgePattern * u_edgeIntensity;
-            
-            float depth = length(q) * 0.5;
-            color *= 1.0 + depth;
-            
-            float bgDepth = length(uv) * 0.5;
-            
-            vec3 bgColor = hsv2rgb(vec3(0.7, 0.5, 0.1 * bgDepth));
-            color = mix(bgColor, color, (finalPattern * 0.8 + 0.2) * (1.0 - bgDepth * 0.5));
-            
-            float sharpEdge = abs(sin(finalPattern * 50.0 + t));
-            sharpEdge = pow(sharpEdge, 20.0);
-            color += vec3(1.0, 0.8, 0.5) * sharpEdge * u_glowIntensity;
-            
-            gl_FragColor = vec4(color, 1.0);
-        }
-      `;
-      
-      const vertexShader = `
-        void main() {
-          gl_Position = vec4(position, 1.0);
-        }
-      `;
-      
-      const uniforms = {
-        u_time: { value: 0 },
-        u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-        u_speedFactor: { value: speedFactor },
-        u_iterations: { value: iterations },
-        u_symmetry: { value: symmetry },
-        u_complexity: { value: complexity },
-        u_rotationSpeed: { value: rotationSpeed },
-        u_color1: { value: new THREE.Vector3(0.25, 0.5, 1.0) },
-        u_color2: { value: new THREE.Vector3(1.0, 0.25, 0.5) },
-        u_edgeIntensity: { value: edgeIntensity },
-        u_glowIntensity: { value: glowIntensity },
-        u_harmonicScale: { value: harmonicScale },
-        u_spiralFactor: { value: spiralFactor },
-        u_patternMix: { value: patternMix }
-      };
-      
-      uniformsRef.current = uniforms;
-      
-      updateShaderColors();
-      
-      const material = new THREE.ShaderMaterial({
-        fragmentShader,
-        vertexShader,
-        uniforms,
-        depthWrite: false,
-        depthTest: false,
-      });
-      
-      materialRef.current = material;
-      
-      const geometry = new THREE.PlaneGeometry(2, 2);
-      const mesh = new THREE.Mesh(geometry, material);
-      scene.add(mesh);
-      
-      const handleResize = () => {
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
-      };
-      
-      window.addEventListener('resize', handleResize);
-      
-      const animate = (time: number) => {
-        uniforms.u_time.value = time * 0.001;
-        renderer.render(scene, camera);
-        requestIdRef.current = requestAnimationFrame(animate);
-      };
-      
-      requestIdRef.current = requestAnimationFrame(animate);
-      
-      return () => {
-        if (requestIdRef.current !== null) {
-          cancelAnimationFrame(requestIdRef.current);
-        }
-        
-        window.removeEventListener('resize', handleResize);
-        
-        if (containerRef.current && containerRef.current.contains(renderer.domElement)) {
-          containerRef.current.removeChild(renderer.domElement);
-        }
-        
-        geometry.dispose();
-        material.dispose();
-        renderer.dispose();
-      };
+    if (typeof window === 'undefined') return; // SSR対策
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+    camera.position.z = 1;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000); // 背景を黒に設定
+
+    if (containerRef.current && !containerRef.current.contains(renderer.domElement)) {
+      containerRef.current.appendChild(renderer.domElement);
     }
+
+    const uniforms = {
+      u_time: { value: 0 },
+      u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      u_speedFactor: { value: speedFactor || 1.0 },
+    };
+
+    console.log("uniforms", uniforms); // デバッグ
+
+    const fragmentShader = `
+      precision highp float;
+      
+      uniform float u_time;
+      uniform vec2 u_resolution;
+      uniform float u_speedFactor;
+      uniform int u_iterations;
+      uniform float u_symmetry;
+      uniform float u_complexity;
+      uniform float u_rotationSpeed;
+      uniform vec3 u_color1;
+      uniform vec3 u_color2;
+      uniform float u_edgeIntensity;
+      uniform float u_glowIntensity;
+      uniform float u_harmonicScale;
+      uniform float u_spiralFactor;
+      uniform float u_patternMix;
+      
+      #define PI 3.14159265359
+      
+      vec3 hsv2rgb(vec3 c) {
+          vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+          vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+          return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+      }
+      
+      vec2 cmul(vec2 a, vec2 b) {
+          return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+      }
+      
+      vec2 cexp(vec2 z) {
+          return vec2(exp(z.x) * cos(z.y), exp(z.x) * sin(z.y));
+      }
+      
+      float harmonicPattern(vec2 p, float scale, float t) {
+          return 0.5 + 0.5 * sin(length(p) * scale - t);
+      }
+      
+      float spiralPattern(vec2 p, float spiralFactor, float t) {
+          float angle = atan(p.y, p.x);
+          float r = length(p);
+          return 0.5 + 0.5 * sin(r * 10.0 - angle * spiralFactor + t);
+      }
+      
+      vec2 rotate(vec2 p, float a) {
+          float c = cos(a);
+          float s = sin(a);
+          return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+      }
+      
+      vec2 iteratedFunction(vec2 p, float t, int iterations, float symmetry, float rotSpeed) {
+          for(int i = 0; i < 10; i++) {
+              if (i >= iterations) break;
+              
+              p = abs(p) / dot(p, p) - 0.5;
+              
+              float rotAngle = t * rotSpeed + float(i) * 0.1 + (2.0 * PI / symmetry);
+              p = rotate(p, rotAngle);
+              
+              p = cmul(p, cexp(vec2(0.0, t * 0.1)));
+          }
+          return p;
+      }
+      
+      vec2 kaleidoscope(vec2 p, float segments) {
+          float angle = atan(p.y, p.x);
+          float segmentAngle = 2.0 * PI / segments;
+          float baseAngle = floor(angle / segmentAngle) * segmentAngle;
+          float relativeAngle = angle - baseAngle;
+          
+          if (mod(floor(angle / segmentAngle), 2.0) >= 1.0) {
+              relativeAngle = segmentAngle - relativeAngle;
+          }
+          
+          float len = length(p);
+          return vec2(len * cos(relativeAngle + baseAngle), len * sin(relativeAngle + baseAngle));
+      }
+      
+      void main() {
+          vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+          
+          float t = u_time * u_speedFactor;
+          
+          vec2 kUv = kaleidoscope(uv, u_symmetry);
+          
+          vec2 p = rotate(kUv, t * u_rotationSpeed);
+          
+          vec2 q = iteratedFunction(p, t, u_iterations, u_symmetry, u_rotationSpeed);
+          
+          float pattern1 = harmonicPattern(q, u_harmonicScale, t * 2.0);
+          float pattern2 = spiralPattern(q, u_spiralFactor, t);
+          
+          float finalPattern = mix(pattern1, pattern2, u_patternMix + 0.5 * sin(t * 0.2));
+          
+          float edgePattern = 0.5 + 0.5 * sin(finalPattern * u_complexity);
+          edgePattern = pow(edgePattern, 10.0);
+          
+          vec3 color = mix(
+              u_color1,
+              u_color2,
+              clamp(finalPattern * 2.0 - 0.5, 0.0, 1.0)
+          );
+          
+          color += vec3(1.0) * edgePattern * u_edgeIntensity;
+          
+          float depth = length(q) * 0.5;
+          color *= 1.0 + depth;
+          
+          float bgDepth = length(uv) * 0.5;
+          
+          vec3 bgColor = hsv2rgb(vec3(0.7, 0.5, 0.1 * bgDepth));
+          color = mix(bgColor, color, (finalPattern * 0.8 + 0.2) * (1.0 - bgDepth * 0.5));
+          
+          float sharpEdge = abs(sin(finalPattern * 50.0 + t));
+          sharpEdge = pow(sharpEdge, 20.0);
+          color += vec3(1.0, 0.8, 0.5) * sharpEdge * u_glowIntensity;
+          
+          gl_FragColor = vec4(color, 1.0);
+      }
+    `;
+
+    const vertexShader = `
+      void main() {
+        gl_Position = vec4(position, 1.0);
+      }
+    `;
+
+    const material = new THREE.ShaderMaterial({
+      fragmentShader,
+      vertexShader,
+      uniforms,
+      depthWrite: false,
+      depthTest: false,
+    });
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    const animate = (time: number) => {
+      uniforms.u_time.value = time * 0.001;
+      renderer.render(scene, camera);
+      requestIdRef.current = requestAnimationFrame(animate);
+    };
+
+    requestIdRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (requestIdRef.current !== null) {
+        cancelAnimationFrame(requestIdRef.current);
+      }
+      if (containerRef.current && containerRef.current.contains(renderer.domElement)) {
+        containerRef.current.removeChild(renderer.domElement);
+      }
+      geometry.dispose();
+      material.dispose();
+      renderer.dispose();
+    };
   }, []);
   
   useEffect(() => {
